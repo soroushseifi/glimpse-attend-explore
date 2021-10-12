@@ -16,8 +16,9 @@ class GAE(nn.Module):
         self.attention_stream=Attention_Module()
         self.contrastive_stream=Contrastive_Module()
         self.encoder=Encoder()
-        self.bottleneck_reduce=self.contrastive_stream.bottleneck_reduce1
-        self.bn_bottleneck_reduce=self.contrastive_stream.bn_bottleneck_reduce
+        self.bottleneck_reduce1=nn.Conv2d(256,16,1,bias=False)
+        self.bottleneck_reduce2=nn.Conv2d(16,8,1,bias=False)
+        self.bn_bottleneck_reduce1=nn.BatchNorm2d(16,eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
         self.inpaint=nn.Linear(16*(b_height)*(b_width),16*(b_height)*(b_width))
         self.final_pred=t.zeros([batch_size,channels,img_size_height,img_size_width])
         self.att_pred=t.zeros([batch_size,channels,img_size_height,img_size_width])
@@ -72,13 +73,18 @@ class GAE(nn.Module):
         masks_t=t.stack(masks_t)
         self.masks=t.clamp(self.masks+masks_t,0,1)
         return
+    def reduce_bottleneck_full(self,bottleneck):
+        bottleneck_reduced1=F.relu(self.bottleneck_reduce1(bottleneck))
+        bottlneck_reduced2=F.relu(self.bottleneck_reduce2(bottleneck_reduced1))
+        return bottlneck_reduced2
     def inpaint_bottleneck(self,bottleneck):
         #reduce the number of channels in the bottleneck memory
-        bottleneck_reduced=F.relu(self.bn_bottleneck_reduce(self.bottleneck_reduce(bottleneck))).reshape([batch_size,-1])
+        bottleneck_reduced=F.relu(self.bn_bottleneck_reduce1(self.bottleneck_reduce1(bottleneck))).reshape([batch_size,-1])
         #inpaint the features in the bottleneck memory
         #conv6_pred
         bottleneck_inpainted=F.relu(self.inpaint(bottleneck_reduced)).view([batch_size,16,nb_height_patches,nb_width_patches])
-        return bottleneck_reduced,bottleneck_inpainted
+        bottleneck_inpainted_reduced=F.relu(self.bottleneck_reduce2(bottleneck_inpainted)).reshape([batch_size,-1])
+        return bottleneck_reduced,bottleneck_inpainted,bottleneck_inpainted_reduced
     def final_prediction(self):
         concat=t.cat([self.final_pred,self.att_pred,self.cont_pred],1)
         pred1=F.relu(self.conv_pred1(concat))
@@ -173,10 +179,6 @@ class GAE(nn.Module):
         np.save(directory+'E'+str(epoch)+'-I'+str(img_number)+'-S'+str(step)+'-heatmap',np.array(np.clip(img,0,255),dtype='uint8'))  
     def forward(self,inputs,epoch,b_number,write_file,last_batch,is_training,save_outputs=True,save_all=False):
         self.reinitialize()
-        if is_training==True:
-            #for training get the groundtruth features for the full image to be used for the contrastive loss
-            bn_gt,i3_gt,i2_gt,i1_gt=self.encoder(inputs)
-            bn_gt_cont,i3_gt_cont,i2_gt_cont,i1_gt_cont=self.contrastive_stream.get_contrast_vectors(bn_gt,i3_gt,i2_gt,i1_gt)
         for step in range(nglimpses):
             #extract glimpses according to the location - adapt the location so that glimpses fall inside image borders
             glimpses,self.Loc=extract_glimpse(self.Loc,inputs)
@@ -187,11 +189,11 @@ class GAE(nn.Module):
             #store features in the memory module
             bn_memory,i3_memory,i2_memory,i1_memory=self.memory(self.Loc,bn,i3,i2,i1)
             #reduce number of bottleneck channels and inpaint the missing features
-            reduced_bottleneck,inpainted_bottleneck=self.inpaint_bottleneck(bn_memory)
+            reduced_bottleneck,inpainted_bottleneck,inpainted_bottleneck_reduced=self.inpaint_bottleneck(bn_memory)
             #get attention stream's prediction + attention map for exploration
             self.att_pred,self.attention=self.attention_stream(reduced_bottleneck,inpainted_bottleneck,i3_memory,i2_memory,i1_memory)
             #get contrastive stream's prediction
-            self.cont_pred=self.contrastive_stream(inpainted_bottleneck,i3_memory,i2_memory,i1_memory)
+            self.cont_pred,c3,c2,c1=self.contrastive_stream(inpainted_bottleneck,i3_memory,i2_memory,i1_memory)
             #combine attention and contrastive module's preditions with last step's final prediction to get current step's output
             self.final_pred=self.final_prediction()
             #choose the next location to attend in the scene
@@ -199,7 +201,14 @@ class GAE(nn.Module):
             if is_training==True:
                 #calculate the downstream and contrastive loss
                 self.calculate_downstream_loss(inputs)
-                bn_pred_cont,i3_pred_cont,i2_pred_cont,i1_pred_cont=self.contrastive_stream.get_contrast_vectors(bn_memory,i3_memory,i2_memory,i1_memory)
+                #get the groundtruth features for the full image to be used for the contrastive loss
+                bn_gt,i3_gt,i2_gt,i1_gt=self.encoder(inputs)
+                #reduce groundtruth bottleneck features
+                bn_gt_reduced=self.reduce_bottleneck_full(bn_gt)
+                #reduce and normalize groundtruth featurs
+                bn_gt_cont,i3_gt_cont,i2_gt_cont,i1_gt_cont=self.contrastive_stream.get_contrast_vectors_full(bn_gt_reduced,i3_gt,i2_gt,i1_gt)
+ #reduce project and normalize the predcited features               
+                bn_pred_cont,i3_pred_cont,i2_pred_cont,i1_pred_cont=self.contrastive_stream.get_contrast_vectors(inpainted_bottleneck_reduced,c3,c2,c1)
                 self.calculate_contrastive_loss(bn_pred_cont,bn_gt_cont)
                 self.calculate_contrastive_loss(i3_pred_cont,i3_gt_cont)
                 self.calculate_contrastive_loss(i2_pred_cont,i2_gt_cont)
