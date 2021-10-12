@@ -110,8 +110,6 @@ class GAE(nn.Module):
         return Loc
     def optimize(self,last_batch):
         cost = self.all_steps_loss+self.all_att_loss+self.all_cont_loss+self.contrastive_loss
-        if last_batch==True:
-            print(self.all_steps_loss,self.all_att_loss,self.all_cont_loss,self.contrastive_loss)
         cost.backward()
         self.optimizer.step()
         return
