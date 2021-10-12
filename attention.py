@@ -74,4 +74,3 @@ class Attention_Module(nn.Module):
         level_1=merge_1_feat*merge_1_att
         pred=self.pred(level_1)
         return pred,bottleneck_attention
-#
