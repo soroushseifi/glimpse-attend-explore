@@ -117,7 +117,7 @@ def set_directories():
 def get_data():
     images = []
     images_test = []
-    directory='/sun360/'
+    directory='sun360/'
     dataset='images.txt'
     counter=0
     with open(directory+dataset) as f:
