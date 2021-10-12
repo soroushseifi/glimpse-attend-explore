@@ -40,7 +40,6 @@ class Attention_Module(nn.Module):
             nn.ReLU())),
             nn.ConvTranspose2d(64,64,3,stride=2,padding=1,output_padding=[1,1],bias=False),
             nn.BatchNorm2d(64,eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
-            nn.ReLU() #extra
         )  
         self.merge_1=nn.Conv2d(128,65,3,padding=1,bias=False)
         self.bn_merge_1=nn.BatchNorm2d(64,eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
