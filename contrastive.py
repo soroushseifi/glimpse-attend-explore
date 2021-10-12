@@ -80,3 +80,4 @@ class Contrastive_Module(nn.Module):
         level_1=self.merge_1(deconv_1_skip)
         pred=self.pred(level_1)
         return pred
+#
