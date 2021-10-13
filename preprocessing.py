@@ -68,7 +68,7 @@ def set_directories():
     if not os.path.exists('checktrain/'):
         os.makedirs('checktrain/')
     return
-def get_data(number_of_views):
+def get_data():
     images = []
     images_test = []
     #directory='/esat/garnet/sseifi/no_backup/code/posenet/sun360/'
@@ -86,8 +86,7 @@ def get_data(number_of_views):
             if data_counter<counter//10:
                 images_test.append(directory+line.rstrip('\n'))
             else:
-                for i in range(number_of_views):
-                    images.append(directory+line.rstrip('\n'))
+                images.append(directory+line.rstrip('\n'))
     return images,images_test
 def preprocess(image,test):
     X = cv2.imread(image)
