@@ -16,7 +16,7 @@ from network import model
 from traineval import *
 #from collections import namedtuple
 set_directories()
-images,test_images=get_data(1)
+images,test_images=get_data()
 nb_batches=len(images)//batch_size
 nb_test_batches=len(test_images)//batch_size
 segmentit=model().cuda()
